@@ -33,8 +33,8 @@ $this->title = 'Fine component';
         <table class="table">
             <?php foreach ($loans as $loan): ?>
                 <tr>
-                    <td><?= $loan[0]->format('d.m.Y') ?></td>
-                    <td><?= $loan[1] ?></td>
+                    <td><?= $loan['date']->format('d.m.Y') ?></td>
+                    <td><?= $loan['sum'] ?></td>
                 </tr>
             <?php endforeach; ?>
         </table>
@@ -44,9 +44,9 @@ $this->title = 'Fine component';
         <table class="table">
             <?php foreach ($payments as $payment): ?>
                 <tr>
-                    <td><?= $payment[0]->format('d.m.Y') ?></td>
-                    <td><?= $payment[1] ?></td>
-                    <td><?= is_null($payment[2]) ? 'null' : $payment[2]->format('m.Y') ?></td>
+                    <td><?= $payment['date']->format('d.m.Y') ?></td>
+                    <td><?= $payment['sum'] ?></td>
+                    <td><?= is_null($payment['payFor']) ? 'null' : $payment['payFor']->format('m.Y') ?></td>
                 </tr>
             <?php endforeach; ?>
         </table>

@@ -3,6 +3,7 @@
 namespace app\components;
 
 use yii\base\Component;
+use yii\helpers\VarDumper;
 
 
 class FineComponent extends Component
@@ -90,8 +91,8 @@ class FineComponent extends Component
             return $a['date'] > $b['date'] ? 1 : -1;
         });
         */
-        $payments = $this->splitPayments($payments, $loans);
 
+        $payments = $this->splitPayments($payments, $loans);
         $periods = [];
         foreach ($loans as $index => $loan) {
             $periods[] = $this->countForPeriod(
@@ -137,13 +138,14 @@ class FineComponent extends Component
             $result[$index] = [];
             $loan['month'] = 12 * intval($loan['date']->format('Y')) + intval($loan['date']->format('m'));
         }
-        foreach ($payments as $payment) {
+        foreach ($payments as &$payment) {
             if ($payment['payFor']) {
-                $curMonth = 12 * intval($payment['payFor']->format('Y')) + intval($payment['payFor']->format('m'));
+                $curMonth = 12 * intval($payment['payFor']->format('Y')) + intval($payment['payFor']->format('m')) + 1;
                 $index = array_search($curMonth, array_column($loans, 'month'));
                 if ($index !== false) {
                     $toCut = min($payment['sum'], $loans[$index]['sum']);
                     if ($toCut >= 0.01) {
+                        $loans[$index]['sum'] -= $toCut;
                         $payment['sum'] -= $toCut;
                         $result[$index][] = [
                             'date'=> $payment['date'],
@@ -152,12 +154,13 @@ class FineComponent extends Component
                             'payFor'=> $payment['payFor']
                         ];
                     }
-				}
+                }
             }
             for ($j = 0; $j < count($loans) && $payment['sum'] > 0; $j++) {
                 $toCut = min($payment['sum'], $loans[$j]['sum']);
 
                 if ($toCut >= 0.01) {
+                    $loans[$j]['sum'] -= $toCut;
                     $payment['sum'] -= $toCut;
                     $result[$j][] = [
                         'date'=> $payment['date'],
@@ -165,7 +168,7 @@ class FineComponent extends Component
                         'sum' => $toCut,
                         'payFor'=> $payment['payFor']
                     ];
-			    }
+                }
             }
         }
         return $result;

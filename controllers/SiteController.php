@@ -31,17 +31,17 @@ class SiteController extends Controller
      */
     public function actionIndex()
     {
-        $dateStart = '12.01.2016';
+        $dateStart = '11.01.2016';
         $dateFinish = '19.05.2019';
         $loanAmount = 5605;
 
         $loans = [
             ['11.02.2016', 5705],
             ['11.03.2016', 5893],
-            ['12.04.2016', 6003],
+            ['11.04.2016', 6003],
             ['11.05.2016', 6003],
             ['11.06.2016', 6003],
-            ['12.07.2016', 6003],
+            ['11.07.2016', 6003],
         ];
 
         $payments = [
@@ -56,16 +56,22 @@ class SiteController extends Controller
         $dateFinish = \DateTimeImmutable::createFromFormat('d.m.Y', $dateFinish);
 
         foreach ($loans as &$loan) {
-            $loan[0] = \DateTimeImmutable::createFromFormat('d.m.Y', $loan[0]);
+            $loan['date'] = \DateTimeImmutable::createFromFormat('d.m.Y', $loan[0]);
+            $loan['sum'] = floatval($loan[1]);
+            unset($loan[0]);
+            unset($loan[1]);
         }
 
         foreach ($payments as &$payment) {
-            $payment[0] = \DateTimeImmutable::createFromFormat('d.m.Y', $payment[0]);
-            $payment[2] = is_null($payment[2]) ? null : \DateTimeImmutable::createFromFormat('m.Y', $payment[2]);
+            $payment['date'] = \DateTimeImmutable::createFromFormat('d.m.Y', $payment[0]);
+            $payment['sum'] = floatval($payment[1]);
+            $payment['payFor'] = is_null($payment[2]) ? null : \DateTimeImmutable::createFromFormat('m.Y', $payment[2]);
+            unset($payment[0]);
+            unset($payment[1]);
+            unset($payment[2]);
         }
 
         $result = \Yii::$app->fine->getFine($loanAmount, $dateStart, $dateFinish, $loans, $payments);
-        var_dump($result); die();
 
         return $this->render('index',
             compact('dateStart', 'dateFinish', 'loanAmount', 'loans', 'payments', 'result'));
