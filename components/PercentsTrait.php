@@ -116,8 +116,10 @@ trait PercentsTrait
         $this->datesBase = [];
         $this->percents = [];
 
+        $this->dates_percents = array_reverse($this->dates_percents);
+
         foreach ($this->dates_percents as $el) {
-            $this->percents[] = $el[0];
+            $this->percents[] = floatval($el[0]);
             $this->datesBase[] = \DateTimeImmutable::createFromFormat('d.m.Y', $el[1]);
         }
     }

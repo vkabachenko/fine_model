@@ -3,8 +3,6 @@
 namespace app\components;
 
 use yii\base\Component;
-use yii\helpers\VarDumper;
-
 
 class FineComponent extends Component
 {
@@ -189,8 +187,8 @@ class FineComponent extends Component
             $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $dateFinish];
         } elseif ($method == self::METHOD_NEW_FOR_ALL_TIME && $dateStart < $this->newLaw) {
             $newDate = $dateStart;
-            $days30 = $dateStart->add(new \DateInterval('P30D'));
-            $days90 = $dateStart->add(new \DateInterval('P90D'));
+            $days30 = $dateStart->add(new \DateInterval('P29D'));
+            $days90 = $dateStart->add(new \DateInterval('P89D'));
 
             if ($newDate <= $days30) {
                 $till = $dateFinish > $days30 ? $days30 : $dateFinish;
@@ -214,8 +212,8 @@ class FineComponent extends Component
             }
             if ($dateFinish >= $this->newLaw) {
                 $newDate = $dateStart < $this->newLaw ? $this->newLaw : $dateStart;
-                $days30 = $dateStart->add(new \DateInterval('P30D'));
-                $days90 = $dateStart->add(new \DateInterval('P90D'));
+                $days30 = $dateStart->add(new \DateInterval('P29D'));
+                $days90 = $dateStart->add(new \DateInterval('P89D'));
                 if ($newDate <= $days30) {
                     $till = $dateFinish > $days30 ? $days30 : $dateFinish;
                     $rulesData[] = ['rate' => '0', 'dateStart' => $newDate, 'dateFinish' => $till];
@@ -471,14 +469,17 @@ class FineComponent extends Component
                     $res[] = ['rate' => $rule['rate'], 'dateStart' => $dateStart, 'dateFinish' => $dateFinish,
                         'percent' => $percents[$i]];
                 }
-			}
-			if ($ruleEnd <= $dateFinish) {
-                $rulePos++;
-                if ($ruleEnd == $dateFinish)
+
+                if ($ruleEnd <= $dateFinish) {
+                    $rulePos++;
+                    if ($ruleEnd == $dateFinish) {
+                        break;
+                    }
+                } else {
                     break;
-            } else {
-                break;
-            }
+                }
+			}
+
 		}
         return $res;
     }
