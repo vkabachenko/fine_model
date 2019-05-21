@@ -62,6 +62,18 @@ class FineComponent extends Component
      * Структура элемента массива:
      * [ 'date' => \DateTimeImmutable, 'sum' => float, 'payFor' => \DateTimeImmutable]
      * @return array
+     * Структура массива
+     * 'dateStart' => \DateTimeImmutable  дата возникновения задолженности
+     * 'dateFinish' => \DateTimeImmutable конечная дата расчета
+     * 'endSum' => float конечная задолженность
+     * 'data' => array Структура элементов массива
+     *  'type' => int Тип записи: инфо о задолженности (1) или оплата (2)
+     *  'dateStart' => \DateTimeImmutable начало периода (type = 1) | дата оплаты (type = 2)
+     *  'dateFinish' => \DateTimeImmutable конец  периода (type = 1) | not set (type = 2)
+     *  'days' => int продолжит периода (type = 1) | not set (type = 2)
+     *  'cost' => float  сумма пени (type = 1) | not set (type = 2)
+     *  'rate' => string ставка пени (type = 1) | not set (type = 2)
+     *  'sum' => float  сумма задолженности (type = 1) | сумма оплаты (type = 2)
      */
     public function getFine(
         float $loanAmount,
@@ -109,7 +121,7 @@ class FineComponent extends Component
     private function daysDiff(\DateTimeImmutable $dateStart, \DateTimeImmutable $dateFinish): int
     {
         $interval = $dateStart->diff($dateFinish);
-        return $interval->d;
+        return $interval->days + 1;
     }
 
     private function collectLoans(array $loans): array
@@ -316,27 +328,26 @@ class FineComponent extends Component
         $resData = [];
         $startJ = 0;
 
-        for ($j = $startJ; $j < count($payments); $j++) {
-            $payment = $payments[$j];
-            if ($dateStart <= $payment['datePlus']) {// убрал, потому что если платёж 12.02.2015, а просрочка с 16.02.2015, то расчёт ведётся только с 01.01.2016
+        for ($j = $startJ; $j < count($payments); $j++, $startJ++) {
+            if ($dateStart <= $payments[$j]['datePlus']) {// убрал, потому что если платёж 12.02.2015, а просрочка с 16.02.2015, то расчёт ведётся только с 01.01.2016
                 break;
             }
 
-            if ($payment['sum'] <= $sum) {
-                $toCut = $payment['sum'];
-                $sum -= $payment['sum'];
-                $payment['sum'] = 0;
+            if ($payments[$j]['sum'] <= $sum) {
+                $toCut = $payments[$j]['sum'];
+                $sum -= $payments[$j]['sum'];
+                $payments[$j]['sum'] = 0;
             } else {
                 $toCut = $sum;
-                $payment['sum'] -= $sum;
+                $payments[$j]['sum'] -= $sum;
                 $sum = 0;
             }
             $resData[] = ['type'=> self::DATA_TYPE_PAYED,
-                'data'=> ['sum'=> $toCut, 'date'=> $payment['date'], 'order'=> $payment['order']]
+                'data'=> ['sum'=> $toCut, 'date'=> $payments[$j]['date']]
             ];
 	    }
 
-        $startJ = $j;
+
         for ($i = 0; $i < count($preData); $i++) {
             $data = $preData[$i];
             $lastStartJ = $startJ;
@@ -358,14 +369,14 @@ class FineComponent extends Component
                     if ($payment['sum'] <= $sum) {
                         $toCut = $payment['sum'];
                         $sum -= $payment['sum'];
-                        $payment['sum'] = 0;
+                        $payments[$j]['sum'] = 0;
                     } else {
                         $toCut = $sum;
-                        $payment['sum'] -= $sum;
+                        $payments[$j]['sum'] -= $sum;
                         $sum = 0;
                     }
                     $resData[] = ['type'=> self::DATA_TYPE_PAYED,
-                        'data'=> ['sum'=> $toCut, 'date'=> $payment['date'], 'order'=> $payment['order']]
+                        'data'=> ['sum'=> $toCut, 'date'=> $payment['date']]
                     ];
 
                     if ($sum < 0.01) {
@@ -407,10 +418,10 @@ class FineComponent extends Component
             if ($payment['sum'] <= $sum) {
                 $toCut = $payment['sum'];
                 $sum -= $payment['sum'];
-                $payment['sum'] = 0;
+                $payments[$j]['sum'] = 0;
             } else {
                 $toCut = $sum;
-                $payment['sum'] -= $sum;
+                $payments[$j]['sum'] -= $sum;
                 $sum = 0;
             }
             $resData[] = ['type'=> self::DATA_TYPE_PAYED,
