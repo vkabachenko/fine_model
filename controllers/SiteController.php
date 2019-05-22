@@ -32,7 +32,7 @@ class SiteController extends Controller
     public function actionIndex()
     {
         $dateStart = '11.01.2016';
-        $dateFinish = '19.05.2019';
+        $dateFinish = '06.05.2019';
         $loanAmount = 5605;
 
         $loans = [
@@ -71,10 +71,11 @@ class SiteController extends Controller
             unset($payment[2]);
         }
 
+        $errors = \Yii::$app->fine->validate($loanAmount, $dateStart, $dateFinish, $loans, $payments);
         $result = \Yii::$app->fine->getFine($loanAmount, $dateStart, $dateFinish, $loans, $payments);
 
         return $this->render('index',
-            compact('dateStart', 'dateFinish', 'loanAmount', 'loans', 'payments', 'result'));
+            compact('dateStart', 'dateFinish', 'loanAmount', 'loans', 'payments', 'errors', 'result'));
     }
 
 }

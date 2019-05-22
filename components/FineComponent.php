@@ -44,6 +44,58 @@ class FineComponent extends Component
      * @param float $loanAmount  начальная сумма задлженности
      * @param \DateTimeImmutable $dateStart  дата начала просрочки
      * @param \DateTimeImmutable $dateFinish  Конечная дата
+     * @param array $loans Задолженности по датам.
+     * Структура элемента массива:
+     * [ 'date' => \DateTimeImmutable, 'sum' => float]
+     * @param array $payments Оплаты по датам.
+     * Структура элемента массива:
+     * [ 'date' => \DateTimeImmutable, 'sum' => float, 'payFor' => \DateTimeImmutable]
+     * @return array  массив ошибок
+    **/
+    public function validate(
+        float $loanAmount,
+        \DateTimeImmutable $dateStart,
+        \DateTimeImmutable $dateFinish,
+        array $loans = [],
+        array $payments = []
+    ): array
+    {
+        $errors = [];
+
+        if ($loanAmount <= 0) {
+            $errors[] = 'Неверная сумма задолженности';
+        }
+
+        if ($dateStart >= end($this->datesBase)) {
+            $errors[] = 'Дата начала периода слишком большая';
+        }
+
+        if ($dateFinish >= end($this->datesBase)) {
+            $errors[] = 'Дата окончания периода слишком большая';
+        }
+
+        if ($this->daysDiff($dateStart, $dateFinish) <= 0) {
+            $errors[] = 'Дата начала периода оказалась больше даты окончания';
+        }
+
+        array_unshift($loans, ['date' => $dateStart, 'sum' => $loanAmount]);
+        foreach ($loans as $loan) {
+            if ($newDate = $this->checkVacation($loan['date'])) {
+                $errors[] = $loan['date']->format('d.m.Y')
+                    . ' неверная дата просрочки.'
+                    . ' Согласно ст. 193 ГК РФ первый день просрочки должен быть следующим после первого рабочего дня.'
+                    . ' Измените на '
+                    . $newDate->format('d.m.Y');
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param float $loanAmount  начальная сумма задлженности
+     * @param \DateTimeImmutable $dateStart  дата начала просрочки
+     * @param \DateTimeImmutable $dateFinish  Конечная дата
      * @param int $rateType
      * 2 по периодам действия ставки рефинансирования,
      * 1 на конец периода,
@@ -68,12 +120,13 @@ class FineComponent extends Component
      * 'endSum' => float конечная задолженность
      * 'data' => array Структура элементов массива
      *  'type' => int Тип записи: инфо о задолженности (1) или оплата (2)
-     *  'dateStart' => \DateTimeImmutable начало периода (type = 1) | дата оплаты (type = 2)
-     *  'dateFinish' => \DateTimeImmutable конец  периода (type = 1) | not set (type = 2)
-     *  'days' => int продолжит периода (type = 1) | not set (type = 2)
-     *  'cost' => float  сумма пени (type = 1) | not set (type = 2)
-     *  'rate' => string ставка пени (type = 1) | not set (type = 2)
-     *  'sum' => float  сумма задолженности (type = 1) | сумма оплаты (type = 2)
+     *  'data' => array
+     *      'dateStart' => \DateTimeImmutable начало периода (type = 1) | дата оплаты (type = 2)
+     *      'dateFinish' => \DateTimeImmutable конец  периода (type = 1) | not set (type = 2)
+     *      'days' => int продолжит периода (type = 1) | not set (type = 2)
+     *      'cost' => float  сумма пени (type = 1) | not set (type = 2)
+     *      'rate' => string ставка пени (type = 1) | not set (type = 2)
+     *      'sum' => float  сумма задолженности (type = 1) | сумма оплаты (type = 2)
      */
     public function getFine(
         float $loanAmount,
@@ -89,10 +142,11 @@ class FineComponent extends Component
         $rateType = $rateType ?? $this->defaultRateType;
         $exactDate = $exactDate ?? $this->defaultExactDate;
         $method = $method ?? $this->defaultMethod;
-        $dateStart = $this->correctVacation($dateStart);
+
         $loans = $this->collectLoans($loans);
-        array_unshift($loans, ['date' => $dateStart, 'sum' => $loanAmount, 'order' => '']);
+        array_unshift($loans, ['date' => $dateStart, 'sum' => $loanAmount]);
         $payments = $this->collectPayments($payments);
+
         /*
         usort($loans, function($a, $b) {
             return $a['date'] > $b['date'] ? 1 : -1;
@@ -127,7 +181,6 @@ class FineComponent extends Component
     private function collectLoans(array $loans): array
     {
         foreach ($loans as &$loan) {
-            $loan['date'] = $this->correctVacation($loan['date']);
             $loan['datePlus'] = $loan['date']->add(new \DateInterval('P1D'));
         }
         return $loans;
