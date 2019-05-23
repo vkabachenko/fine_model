@@ -4,8 +4,8 @@
 /* @var $dateStart \DateTimeImmutable */
 /* @var $dateFinish \DateTimeImmutable */
 /* @var $loanAmount float */
-/* @var $loans array */
-/* @var $payments array */
+/* @var $loansInit array */
+/* @var $paymentsInit array */
 /* @var $errors array */
 /* @var $result array */
 
@@ -32,10 +32,10 @@ $this->title = 'Fine component';
     <div>
         <h2>Loans</h2>
         <table class="table">
-            <?php foreach ($loans as $loan): ?>
+            <?php foreach ($loansInit as $loan): ?>
                 <tr>
-                    <td><?= $loan['date']->format('d.m.Y') ?></td>
-                    <td><?= $loan['sum'] ?></td>
+                    <td><?= $loan[0] ?></td>
+                    <td><?= $loan[1] ?></td>
                 </tr>
             <?php endforeach; ?>
         </table>
@@ -43,11 +43,11 @@ $this->title = 'Fine component';
     <div>
         <h2>Payments</h2>
         <table class="table">
-            <?php foreach ($payments as $payment): ?>
+            <?php foreach ($paymentsInit as $payment): ?>
                 <tr>
-                    <td><?= $payment['date']->format('d.m.Y') ?></td>
-                    <td><?= $payment['sum'] ?></td>
-                    <td><?= is_null($payment['payFor']) ? 'null' : $payment['payFor']->format('m.Y') ?></td>
+                    <td><?= $payment[0] ?></td>
+                    <td><?= $payment[1] ?></td>
+                    <td><?= is_null($payment[2]) ? 'null' : $payment[2] ?></td>
                 </tr>
             <?php endforeach; ?>
         </table>
@@ -76,6 +76,7 @@ $this->title = 'Fine component';
                         <td><?= isset($datum['data']['dateStart']) ? $datum['data']['dateStart']->format('d.m.Y') : '' ?></td>
                         <td><?= isset($datum['data']['dateFinish']) ? $datum['data']['dateFinish']->format('d.m.Y') : '' ?></td>
                         <td><?= $datum['data']['days'] ?? '' ?></td>
+                        <td><?= $datum['data']['percent'] ?? '' ?></td>
                         <td><?= $datum['data']['cost'] ?? '' ?></td>
                         <td><?= $datum['data']['rate'] ?? '' ?></td>
                         <td><?= $datum['data']['sum'] ?? '' ?></td>
@@ -83,6 +84,7 @@ $this->title = 'Fine component';
                    <?php $costAll += ($datum['data']['cost'] ?? 0); ?>
                 <?php endforeach; ?>
                 <tr>
+                    <td></td>
                     <td></td>
                     <td></td>
                     <td></td>

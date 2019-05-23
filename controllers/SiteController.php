@@ -35,7 +35,7 @@ class SiteController extends Controller
         $dateFinish = '06.05.2019';
         $loanAmount = 5605;
 
-        $loans = [
+        $loansInit = [
             ['11.02.2016', 5705],
             ['11.03.2016', 5893],
             ['11.04.2016', 6003],
@@ -44,7 +44,7 @@ class SiteController extends Controller
             ['11.07.2016', 6003],
         ];
 
-        $payments = [
+        $paymentsInit = [
             ['01.02.2016', 5000, null],
             ['01.05.2016', 5000, null],
             ['17.05.2016', 1310, null],
@@ -55,27 +55,28 @@ class SiteController extends Controller
         $dateStart = \DateTimeImmutable::createFromFormat('d.m.Y', $dateStart);
         $dateFinish = \DateTimeImmutable::createFromFormat('d.m.Y', $dateFinish);
 
-        foreach ($loans as &$loan) {
-            $loan['date'] = \DateTimeImmutable::createFromFormat('d.m.Y', $loan[0]);
-            $loan['sum'] = floatval($loan[1]);
-            unset($loan[0]);
-            unset($loan[1]);
+        $loans = [];
+        foreach ($loansInit as $loan) {
+            $loans[] = [
+                'date'=> \DateTimeImmutable::createFromFormat('d.m.Y', $loan[0]),
+                'sum'=> floatval($loan[1])
+                       ];
         }
-
-        foreach ($payments as &$payment) {
-            $payment['date'] = \DateTimeImmutable::createFromFormat('d.m.Y', $payment[0]);
-            $payment['sum'] = floatval($payment[1]);
-            $payment['payFor'] = is_null($payment[2]) ? null : \DateTimeImmutable::createFromFormat('m.Y', $payment[2]);
-            unset($payment[0]);
-            unset($payment[1]);
-            unset($payment[2]);
+        $payments = [];
+        foreach ($paymentsInit as $payment) {
+            $payments[] = [
+                'date'=> \DateTimeImmutable::createFromFormat('d.m.Y', $payment[0]),
+                'sum'=> floatval($payment[1]),
+                'payFor'=> is_null($payment[2])
+                    ? null
+                    : \DateTimeImmutable::createFromFormat('m.Y', $payment[2])
+                          ];
         }
-
         $errors = \Yii::$app->fine->validate($loanAmount, $dateStart, $dateFinish, $loans, $payments);
         $result = \Yii::$app->fine->getFine($loanAmount, $dateStart, $dateFinish, $loans, $payments);
 
         return $this->render('index',
-            compact('dateStart', 'dateFinish', 'loanAmount', 'loans', 'payments', 'errors', 'result'));
+            compact('dateStart', 'dateFinish', 'loanAmount', 'loansInit', 'paymentsInit', 'errors', 'result'));
     }
 
 }

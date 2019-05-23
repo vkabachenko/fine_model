@@ -124,6 +124,7 @@ class FineComponent extends Component
      *      'dateStart' => \DateTimeImmutable начало периода (type = 1) | дата оплаты (type = 2)
      *      'dateFinish' => \DateTimeImmutable конец  периода (type = 1) | not set (type = 2)
      *      'days' => int продолжит периода (type = 1) | not set (type = 2)
+     *      'percent' => float процентная ставка (type = 1) | not set (type = 2)
      *      'cost' => float  сумма пени (type = 1) | not set (type = 2)
      *      'rate' => string ставка пени (type = 1) | not set (type = 2)
      *      'sum' => float  сумма задолженности (type = 1) | сумма оплаты (type = 2)
