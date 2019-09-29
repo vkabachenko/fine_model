@@ -73,8 +73,6 @@ class SiteController extends Controller
                     : \DateTimeImmutable::createFromFormat('m.Y', $payment[2])
                           ];
         }
-//        $errors = \Yii::$app->fine->validate($loanAmount, $dateStart, $dateFinish, $loans, $payments);
-        $errors = [];
 
         $model = new Fine([
             'loanAmount' => $loanAmount,
@@ -83,7 +81,12 @@ class SiteController extends Controller
             'loans' => $loans,
             'payments' => $payments
         ]);
-        //$result = \Yii::$app->fine->getFine($loanAmount, $dateStart, $dateFinish, $loans, $payments);
+
+        $errors = [];
+        if (!$model->validate()) {
+            $errors = $model->errors['loans'] ?? [];
+        }
+
         $result = $model->getFine();
 
         return $this->render('index',

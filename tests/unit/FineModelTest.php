@@ -52,6 +52,10 @@ class FineModelTest extends \Codeception\Test\Unit
             'payments' => $payments,
             'rateType' => Fine::RATE_TYPE_TODAY
         ]);
+
+        $validate = $model->validate();
+        $this->assertEquals(true, $validate);
+
         $result = $model->getFine();
 
         $this->assertEquals(3, count($result));
@@ -139,6 +143,10 @@ class FineModelTest extends \Codeception\Test\Unit
             'loans' => $loans,
             'payments' => $payments
         ]);
+
+        $validate = $model->validate();
+        $this->assertEquals(true, $validate);
+
         $result = $model->getFine();
 
         $this->assertEquals(3, count($result));
@@ -224,7 +232,6 @@ class FineModelTest extends \Codeception\Test\Unit
                     : \DateTimeImmutable::createFromFormat('m.Y', $payment[2])
             ];
         }
-//        $errors = \Yii::$app->fine->validate($loanAmount, $dateStart, $dateFinish, $loans, $payments);
 
         $model = new Fine([
             'loanAmount' => $loanAmount,
@@ -233,8 +240,14 @@ class FineModelTest extends \Codeception\Test\Unit
             'loans' => $loans,
             'payments' => $payments
         ]);
+
+        $validate = $model->validate();
+        $this->assertEquals(false, $validate);
+        $errors = $model->errors['loans'] ?? [];
+        $this->assertEquals(3, count($errors));
+
         $result = $model->getFine();
-        //$this->assertEquals(3, count($errors));
+
         $this->assertEquals(7, count($result));
 
         $expectedResult = [

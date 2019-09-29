@@ -63,7 +63,56 @@ class Fine extends Model
 
     public function rules()
     {
-        return [];
+        return [
+            [['loanAmount', 'dateStart', 'dateFinish'], 'required'],
+            ['loanAmount', 'number', 'min' => 0],
+            [['dateStart', 'dateFinish'], 'validateDateType'],
+            ['dateStart', 'validateDateStart'],
+            ['dateFinish', 'validateDateFinish'],
+            ['loans', 'validateLoans'],
+        ];
+    }
+
+    public function validateDateType($attribute, $params, $validator)
+    {
+        if (!($this->$attribute instanceof \DateTimeImmutable)) {
+            $this->addError($attribute, 'Неверный тип даты');
+        }
+    }
+
+
+    public function validateDateStart($attribute, $params, $validator)
+    {
+        if ($this->dateStart >= end($this->datesBase)) {
+            $this->addError($attribute, 'Дата начала периода слишком большая');
+        }
+        if ($this->daysDiff($this->dateStart, $this->dateFinish) <= 0) {
+            $this->addError($attribute,'Дата начала периода оказалась больше даты окончания');
+        }
+    }
+
+    public function validateDateFinish($attribute, $params, $validator)
+    {
+        if ($this->dateFinish >= end($this->datesBase)) {
+            $this->addError($attribute, 'Дата окончания периода слишком большая');
+        }
+    }
+
+    public function validateLoans($attribute, $params, $validator)
+    {
+        $loans = $this->loans;
+
+        array_unshift($loans, ['date' => $this->dateStart, 'sum' => $this->loanAmount]);
+
+        foreach ($loans as $loan) {
+            if ($newDate = $this->checkVacation($loan['date'])) {
+                $this->addError($attribute, $loan['date']->format('d.m.Y')
+                    . ' неверная дата просрочки.'
+                    . ' Согласно ст. 193 ГК РФ первый день просрочки должен быть следующим после первого рабочего дня.'
+                    . ' Измените на '
+                    . $newDate->format('d.m.Y'));
+            }
+        }
     }
 
     public function getFine(): array
