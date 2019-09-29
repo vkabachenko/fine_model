@@ -160,36 +160,36 @@ class Fine extends Model
 
     protected function splitPayments(array $payments, array $loans): array
     {
+        $result = $this->initResultAndLoans($loans);
+
+        foreach ($payments as &$payment) {
+            $this->splitPayForPayment($loans, $payment, $result);
+            $this->splitPaymentByLoanPeriods($loans, $payment, $result);
+        }
+        return $result;
+    }
+
+    protected function initResultAndLoans(array &$loans): array
+    {
         $result = [];
         foreach ($loans as $index => &$loan) {
             $result[$index] = [];
             $loan['month'] = 12 * intval($loan['date']->format('Y')) + intval($loan['date']->format('m'));
         }
-        foreach ($payments as &$payment) {
-            if ($payment['payFor']) {
-                $curMonth = 12 * intval($payment['payFor']->format('Y')) + intval($payment['payFor']->format('m')) + 1;
-                $index = array_search($curMonth, array_column($loans, 'month'));
-                if ($index !== false) {
-                    $toCut = min($payment['sum'], $loans[$index]['sum']);
-                    if ($toCut >= 0.01) {
-                        $loans[$index]['sum'] -= $toCut;
-                        $payment['sum'] -= $toCut;
-                        $result[$index][] = [
-                            'date'=> $payment['date'],
-                            'datePlus'=> $payment['datePlus'],
-                            'sum' => $toCut,
-                            'payFor'=> $payment['payFor']
-                        ];
-                    }
-                }
-            }
-            for ($j = 0; $j < count($loans) && $payment['sum'] > 0; $j++) {
-                $toCut = min($payment['sum'], $loans[$j]['sum']);
+        return $result;
+    }
 
+    protected function splitPayForPayment(array $loans, array &$payment, array &$result): void
+    {
+        if ($payment['payFor']) {
+            $curMonth = 12 * intval($payment['payFor']->format('Y')) + intval($payment['payFor']->format('m')) + 1;
+            $index = array_search($curMonth, array_column($loans, 'month'));
+            if ($index !== false) {
+                $toCut = min($payment['sum'], $loans[$index]['sum']);
                 if ($toCut >= 0.01) {
-                    $loans[$j]['sum'] -= $toCut;
+                    $loans[$index]['sum'] -= $toCut;
                     $payment['sum'] -= $toCut;
-                    $result[$j][] = [
+                    $result[$index][] = [
                         'date'=> $payment['date'],
                         'datePlus'=> $payment['datePlus'],
                         'sum' => $toCut,
@@ -198,7 +198,24 @@ class Fine extends Model
                 }
             }
         }
-        return $result;
+    }
+
+    protected function splitPaymentByLoanPeriods(array &$loans, array &$payment, array &$result)
+    {
+        for ($j = 0; $j < count($loans) && $payment['sum'] > 0; $j++) {
+            $toCut = min($payment['sum'], $loans[$j]['sum']);
+
+            if ($toCut >= 0.01) {
+                $loans[$j]['sum'] -= $toCut;
+                $payment['sum'] -= $toCut;
+                $result[$j][] = [
+                    'date'=> $payment['date'],
+                    'datePlus'=> $payment['datePlus'],
+                    'sum' => $toCut,
+                    'payFor'=> $payment['payFor']
+                ];
+            }
+        }
     }
 
     protected function countForPeriod(
