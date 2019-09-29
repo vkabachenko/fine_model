@@ -1,0 +1,498 @@
+<?php
+
+
+namespace app\models\fine;
+
+
+use yii\base\Model;
+use app\models\fine\VacationTrait;
+use app\models\fine\PercentsTrait;
+
+class Fine extends Model
+{
+    const METHOD_300_ALL_TIME = 1;
+    const METHOD_SPLIT = 2;
+    const METHOD_NEW_FOR_ALL_TIME = 3;
+
+    const  RATE_TYPE_SINGLE = 1;
+    const  RATE_TYPE_PERIOD = 2;
+    const  RATE_TYPE_PAY = 3;
+    const  RATE_TYPE_TODAY = 4;
+    const  RATE_TYPE_DATE = 5;
+
+    const DATA_TYPE_INFO = 1;
+    const DATA_TYPE_PAYED = 2;
+
+    use VacationTrait, PercentsTrait;
+
+    /* Входные параметры модели */
+
+    /* @var int */
+    public $rateType = self::RATE_TYPE_PERIOD;
+
+    /* @var \DateTimeImmutable|null */
+    public $exactDate = null;
+
+    /* @var int */
+    public $method = self::METHOD_300_ALL_TIME;
+
+    /* @var float */
+    public $loanAmount;
+
+    /* @var \DateTimeImmutable */
+    public $dateStart;
+
+    /* @var \DateTimeImmutable */
+    public $dateFinish;
+
+    /* @var array */
+    public $loans = [];
+
+    /* @var array */
+    public $payments = [];
+
+    /* @var \DateTimeImmutable */
+    protected $newLaw;
+
+    public function __construct($config = [])
+    {
+        $this->newLaw = new \DateTimeImmutable('2006-01-01');
+        $this->createDatesPercents();
+        parent::__construct($config);
+    }
+
+    public function rules()
+    {
+        return [];
+    }
+
+    public function getFine(): array
+    {
+        $loans = $this->collectLoans();
+        array_unshift($loans, ['date' => $this->dateStart, 'sum' => $this->loanAmount]);
+        $payments = $this->collectPayments();
+
+        $payments = $this->splitPayments($payments, $loans);
+        $periods = [];
+        foreach ($loans as $index => $loan) {
+            $periods[] = $this->countForPeriod(
+                $loan['sum'],
+                $loan['date'],
+                $payments[$index]
+            );
+        }
+
+        return $periods;
+    }
+
+    protected function daysDiff(\DateTimeImmutable $dateStart, \DateTimeImmutable $dateFinish): int
+    {
+        $interval = $dateStart->diff($dateFinish);
+        return $interval->days + 1;
+    }
+
+    protected function collectLoans(): array
+    {
+        $loans = $this->loans;
+        foreach ($loans as &$loan) {
+            $loan['datePlus'] = $loan['date']->add(new \DateInterval('P1D'));
+        }
+        return $loans;
+    }
+
+    protected function collectPayments(): array
+    {
+        $payments = $this->payments;
+        foreach ($payments as &$payment) {
+            $payment['datePlus'] = $payment['date']->add(new \DateInterval('P1D'));
+        }
+        return $payments;
+    }
+
+    protected function splitPayments(array $payments, array $loans): array
+    {
+        $result = [];
+        foreach ($loans as $index => &$loan) {
+            $result[$index] = [];
+            $loan['month'] = 12 * intval($loan['date']->format('Y')) + intval($loan['date']->format('m'));
+        }
+        foreach ($payments as &$payment) {
+            if ($payment['payFor']) {
+                $curMonth = 12 * intval($payment['payFor']->format('Y')) + intval($payment['payFor']->format('m')) + 1;
+                $index = array_search($curMonth, array_column($loans, 'month'));
+                if ($index !== false) {
+                    $toCut = min($payment['sum'], $loans[$index]['sum']);
+                    if ($toCut >= 0.01) {
+                        $loans[$index]['sum'] -= $toCut;
+                        $payment['sum'] -= $toCut;
+                        $result[$index][] = [
+                            'date'=> $payment['date'],
+                            'datePlus'=> $payment['datePlus'],
+                            'sum' => $toCut,
+                            'payFor'=> $payment['payFor']
+                        ];
+                    }
+                }
+            }
+            for ($j = 0; $j < count($loans) && $payment['sum'] > 0; $j++) {
+                $toCut = min($payment['sum'], $loans[$j]['sum']);
+
+                if ($toCut >= 0.01) {
+                    $loans[$j]['sum'] -= $toCut;
+                    $payment['sum'] -= $toCut;
+                    $result[$j][] = [
+                        'date'=> $payment['date'],
+                        'datePlus'=> $payment['datePlus'],
+                        'sum' => $toCut,
+                        'payFor'=> $payment['payFor']
+                    ];
+                }
+            }
+        }
+        return $result;
+    }
+
+    protected function countForPeriod(
+        float $sum,
+        \DateTimeImmutable $dateStart,
+        array $payments
+    ): array
+    {
+        $rulesData = [];
+        if ($this->method == self::METHOD_300_ALL_TIME && $dateStart < $this->newLaw) {
+            $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $this->dateFinish];
+        } elseif ($this->method == self::METHOD_NEW_FOR_ALL_TIME && $dateStart < $this->newLaw) {
+            $newDate = $dateStart;
+            $days30 = $dateStart->add(new \DateInterval('P29D'));
+            $days90 = $dateStart->add(new \DateInterval('P89D'));
+
+            if ($newDate <= $days30) {
+                $till = $this->dateFinish > $days30 ? $days30 : $this->dateFinish;
+                $rulesData[] = ['rate' => '0', 'dateStart' => $newDate, 'dateFinish' => $till];
+            }
+            if ($newDate <= $days90 && $this->dateFinish > $days30) {
+                $from = $newDate > $days30 ? $newDate : $days30->add(new \DateInterval('P1D'));
+                $till = $this->dateFinish > $days90 ? $days90 : $this->dateFinish;
+                $rulesData[] = ['rate' => '1/300', 'dateStart' => $from, 'dateFinish' => $till];
+            }
+            if ($this->dateFinish > $days90) {
+                $from = $newDate >= $days90 ? $newDate : $days90->add(new \DateInterval('P1D'));
+                $rulesData[] = ['rate' => '1/130', 'dateStart' => $from, 'dateFinish' => $this->dateFinish];
+            }
+        } else {
+            if ($dateStart < $this->newLaw) {
+                $newDate = $this->dateFinish >= $this->newLaw
+                    ? $this->newLaw->sub(new \DateInterval('P1D'))
+                    : $this->dateFinish;
+                $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $newDate];
+            }
+            if ($this->dateFinish >= $this->newLaw) {
+                $newDate = $dateStart < $this->newLaw ? $this->newLaw : $dateStart;
+                $days30 = $dateStart->add(new \DateInterval('P29D'));
+                $days90 = $dateStart->add(new \DateInterval('P89D'));
+                if ($newDate <= $days30) {
+                    $till = $this->dateFinish > $days30 ? $days30 : $this->dateFinish;
+                    $rulesData[] = ['rate' => '0', 'dateStart' => $newDate, 'dateFinish' => $till];
+                }
+                if ($newDate <= $days90 && $this->dateFinish > $days30) {
+                    $from = $newDate > $days30 ? $newDate : $days30->add(new \DateInterval('P1D'));
+                    $till = $this->dateFinish > $days90 ? $days90 : $this->dateFinish;
+                    $rulesData[] = ['rate' => '1/300', 'dateStart' => $from, 'dateFinish' => $till];
+                }
+                if ($this->dateFinish > $days90) {
+                    $from = $newDate >= $days90 ? $newDate : $days90->add(new \DateInterval('P1D'));
+                    $rulesData[] = ['rate' => '1/130', 'dateStart' => $from, 'dateFinish' => $this->dateFinish];
+                }
+            }
+
+        }
+
+        $preData = [];
+
+        if ($this->rateType == self::RATE_TYPE_SINGLE) {
+            $dateFinishInd = 0;
+            for ($i = count($this->datesBase) - 1; $i >= 0; $i--)
+                if ($this->dateFinish >= $this->datesBase[$i]) {
+                    $dateFinishInd = $i;
+                    break;
+                }
+            $preData = $this->pushRules(
+                [$dateStart, new \DateTimeImmutable('3000-01-01')],
+                [$this->percents[$dateFinishInd], 0],
+                $rulesData,
+                $dateStart);
+        } elseif ($this->rateType == self::RATE_TYPE_PAY) {
+            $payDates = [$dateStart];
+            $payPercents = [];
+            $curPercents = 0;
+            for ($i = 0; $i < count($payments) && $curPercents < count($this->percents); $i++) {
+                for (; $curPercents < count($this->percents); $curPercents++) {
+                    if ($payments[$i]['date'] < $this->datesBase[$curPercents]) {
+                        $payDates[] = $payments[$i]['datePlus'];
+                        $payPercents[] = $curPercents >= 1 ? $this->percents[$curPercents - 1] : 0;
+                        break;
+                    }
+                }
+            }
+            for ($i = count($this->datesBase) - 1; $i >= 0; $i--)
+                if ($this->dateFinish >= $this->datesBase[$i]) {
+                    $payPercents[] = $this->percents[$i];
+                    break;
+                }
+            $payDates[] = new \DateTimeImmutable('3000-01-01');
+            $payPercents[] = 0;
+
+            $preData = $this->pushRules(
+                $payDates,
+                $payPercents,
+                $rulesData,
+                $dateStart);
+        } elseif ($this->rateType == self::RATE_TYPE_TODAY) {
+            $today = new \DateTimeImmutable('today');
+            $dateFinishInd = 0;
+            for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
+                if ($today >= $this->datesBase[$i]) {
+                    $dateFinishInd = $i;
+                    break;
+                }
+            }
+
+            $preData = $this->pushRules(
+                [$dateStart, new \DateTimeImmutable('3000-01-01')],
+                [$this->percents[$dateFinishInd], 0],
+                $rulesData,
+                $dateStart);
+        } elseif ($this->rateType == self::RATE_TYPE_DATE) {
+            $date = $this->exactDate;
+            $dateFinishInd = 0;
+            for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
+                if ($date >= $this->datesBase[$i]) {
+                    $dateFinishInd = $i;
+                    break;
+                }
+            }
+            $preData = $this->pushRules(
+                [$dateStart, new \DateTimeImmutable('3000-01-01')],
+                [$this->percents[$dateFinishInd], 0],
+                $rulesData,
+                $dateStart);
+        } else {
+            $preData = $this->pushRules(
+                $this->datesBase,
+                $this->percents,
+                $rulesData,
+                $dateStart);
+        }
+
+        $resData = [];
+        $startJ = 0;
+
+        for ($j = $startJ; $j < count($payments); $j++, $startJ++) {
+            if ($dateStart <= $payments[$j]['datePlus']) {// убрал, потому что если платёж 12.02.2015, а просрочка с 16.02.2015, то расчёт ведётся только с 01.01.2016
+                break;
+            }
+
+            if ($payments[$j]['sum'] <= $sum) {
+                $toCut = $payments[$j]['sum'];
+                $sum -= $payments[$j]['sum'];
+                $payments[$j]['sum'] = 0;
+            } else {
+                $toCut = $sum;
+                $payments[$j]['sum'] -= $sum;
+                $sum = 0;
+            }
+            $resData[] = ['type'=> self::DATA_TYPE_PAYED,
+                'data'=> ['sum'=> $toCut, 'date'=> $payments[$j]['date']]
+            ];
+        }
+
+
+        for ($i = 0; $i < count($preData); $i++) {
+            $data = $preData[$i];
+            $lastStartJ = $startJ;
+            for ($j = $startJ; $j < count($payments) && $sum > 0; $j++) {
+                $payment = $payments[$j];
+                if ($payment['sum'] >= 0.01 && $payment['datePlus'] <= $data['dateFinish']) {
+                    $startJ = $j + 1;
+                    if ($payment['datePlus'] > $data['dateStart']) {
+                        if ( $j == 0 || $j >= 1 && $payments[$j - 1]['datePlus'] < $data['dateStart']) {
+                            $resData[] = ['type'=> self::DATA_TYPE_INFO,
+                                'data'=> $this->processData($sum, $data, $data['dateStart'], $payment['date'])
+                            ];
+                        }
+                        $dateStartInPeriod = $payment['datePlus'];
+                    } else {
+                        $dateStartInPeriod = $data['dateStart'];
+                    }
+
+                    if ($payment['sum'] <= $sum) {
+                        $toCut = $payment['sum'];
+                        $sum -= $payment['sum'];
+                        $payments[$j]['sum'] = 0;
+                    } else {
+                        $toCut = $sum;
+                        $payments[$j]['sum'] -= $sum;
+                        $sum = 0;
+                    }
+                    $resData[] = ['type'=> self::DATA_TYPE_PAYED,
+                        'data'=> ['sum'=> $toCut, 'date'=> $payment['date']]
+                    ];
+
+                    if ($sum < 0.01) {
+                        $sum = 0;
+                        continue;
+                    }
+
+                    if ($j + 1 >= count($payments)
+                        || $j + 1 < count($payments)
+                        && $payments[$j + 1]['datePlus'] > $data['dateFinish']
+                        && $payment['date'] != $payments[$j + 1]['date']) {
+                        $resData[] = ['type'=> self::DATA_TYPE_INFO,
+                            'data'=> $this->processData($sum, $data, $dateStartInPeriod, $data['dateFinish'])
+                        ];
+                    } elseif ($j + 1 < count($payments)
+                        && $payments[$j + 1]['datePlus'] <= $data['dateFinish']
+                        && $payment['date'] != $payments[$j + 1]['date']) {
+                        $resData[] = ['type'=> self::DATA_TYPE_INFO,
+                            'data'=> $this->processData($sum, $data, $dateStartInPeriod, $payments[$j + 1]['date'])
+                        ];
+                    }
+                } else {//if (data.dateFinish <= payment.date) { // все остальные платежи уже из будущих
+                    break;
+                }
+            }
+            if ($sum < 0.01) {
+                $sum = 0;
+                break;
+            }
+            if ($lastStartJ == $startJ) { // не было периода в диапазоне ставки
+                $resData[] = ['type'=> self::DATA_TYPE_INFO,
+                    'data'=> $this->processData($sum, $data, $data['dateStart'], $data['dateFinish'])
+                ];
+            }
+        }
+
+        for ($j = $startJ; $j < count($payments); $j++) {
+            $payment = $payments[$j];
+            if ($payment['sum'] <= $sum) {
+                $toCut = $payment['sum'];
+                $sum -= $payment['sum'];
+                $payments[$j]['sum'] = 0;
+            } else {
+                $toCut = $sum;
+                $payments[$j]['sum'] -= $sum;
+                $sum = 0;
+            }
+            $resData[] = ['type'=> self::DATA_TYPE_PAYED,
+                'data'=> ['sum'=> $toCut, 'date'=> $payment['date'], 'order'=> $payment['order']]
+            ];
+        }
+
+        return ['dateStart'=> $dateStart, 'dateFinish'=> $this->dateFinish, 'data'=> $resData, 'endSum'=> floatval($sum)];
+    }
+
+    private function pushRules(
+        array $dates,
+        array $percents,
+        array $rules,
+        \DateTimeImmutable $dateStartUser,
+        \DateTimeImmutable $dateFinishUser = null
+    ): array
+    {
+        if (is_null($dateFinishUser)) {
+            $dateFinishUser = $this->dateFinish;
+        }
+
+        $res = [];
+        $len = count($dates);
+        $ds = $dateStartUser;
+        $df = $dateFinishUser;
+        $rulePos = 0;
+
+        for ($i = 0; $i + 1 < $len; $i++) {
+            $dateStart = $dates[$i];
+            $dateFinish = $dates[$i + 1]->sub(new \DateInterval('P1D'));
+            if ($dateFinish < $ds || $dateStart > $df) {
+                continue;
+            }
+            if ($dateStart < $ds) {
+                $dateStart = $ds;
+            }
+            if ($dateFinish > $df) {
+                $dateFinish = $df;
+            }
+
+            for ($j = $rulePos; $j < count($rules); $j++) {
+                $rule = $rules[$j];
+                $ruleStart = $rule['dateStart'];
+                $ruleEnd = $rule['dateFinish'];
+
+                if ($ruleStart < $dateStart && $ruleEnd >= $dateStart && $ruleEnd <= $dateFinish) { // [ dS]dF
+                    $res[] = ['rate' => $rule['rate'], 'dateStart' => $dateStart, 'dateFinish' => $rule['dateFinish'],
+                        'percent' => $percents[$i]];
+                } elseif ($ruleStart < $dateStart && $ruleEnd > $dateFinish) { // [ dS dF ]
+                    $res[] = ['rate' => $rule['rate'], 'dateStart' => $dateStart, 'dateFinish' => $dateFinish,
+                        'percent' => $percents[$i]];
+                } elseif ($ruleStart >= $dateStart && $ruleEnd <= $dateFinish) { // dS[ ]dF
+                    $res[] = ['rate' => $rule['rate'], 'dateStart' => $ruleStart, 'dateFinish' => $ruleEnd,
+                        'percent' => $percents[$i]];
+                } elseif ($ruleStart >= $dateStart && $ruleStart <= $dateFinish && $ruleEnd > $dateFinish) { // dS[dF ]
+                    $res[] = ['rate' => $rule['rate'], 'dateStart' => $ruleStart, 'dateFinish' => $dateFinish,
+                        'percent' => $percents[$i]];
+                } else { // не было периода в диапазоне ставки
+                    $res[] = ['rate' => $rule['rate'], 'dateStart' => $dateStart, 'dateFinish' => $dateFinish,
+                        'percent' => $percents[$i]];
+                }
+
+                if ($ruleEnd <= $dateFinish) {
+                    $rulePos++;
+                    if ($ruleEnd == $dateFinish) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+
+        }
+        return $res;
+    }
+
+    private function processData(
+        float $sum,
+        array $data,
+        \DateTimeImmutable $dateStart,
+        \DateTimeImmutable $dateFinish): array
+    {
+        $ratePart = $data['rate'];
+        $days = $this->daysDiff($dateStart, $dateFinish);
+        return [
+            'rate'=> $data['rate'],
+            'percent'=> $data['percent'],
+            'cost'=> $this->countCost($sum, $days, $data['percent'], $this->getRate($ratePart)),
+            'days'=> $days,
+            'dateStart'=> $dateStart,
+            'dateFinish'=> $dateFinish,
+            'sum'=> $sum
+        ];
+    }
+
+    private function getRate(string $part): float
+    {
+        if ($part == '1/300') {
+            return 1/300;
+        }
+        if ($part == '1/130') {
+            return 1/130;
+        }
+        return 0;
+    }
+
+    private function countCost(float $money, int $days, float $percent, float $ratePart): float
+    {
+        $res = $money * $days * $percent * $ratePart / 100;
+        return round($res, 2);
+    }
+
+
+}

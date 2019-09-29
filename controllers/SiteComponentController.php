@@ -2,7 +2,6 @@
 
 namespace app\controllers;
 
-use app\models\fine\Fine;
 use Yii;
 use yii\filters\AccessControl;
 use yii\web\Controller;
@@ -11,7 +10,7 @@ use yii\filters\VerbFilter;
 use app\models\LoginForm;
 use app\models\ContactForm;
 
-class SiteController extends Controller
+class SiteComponentController extends Controller
 {
     /**
      * {@inheritdoc}
@@ -73,18 +72,8 @@ class SiteController extends Controller
                     : \DateTimeImmutable::createFromFormat('m.Y', $payment[2])
                           ];
         }
-//        $errors = \Yii::$app->fine->validate($loanAmount, $dateStart, $dateFinish, $loans, $payments);
-        $errors = [];
-
-        $model = new Fine([
-            'loanAmount' => $loanAmount,
-            'dateStart' => $dateStart,
-            'dateFinish' => $dateFinish,
-            'loans' => $loans,
-            'payments' => $payments
-        ]);
-        //$result = \Yii::$app->fine->getFine($loanAmount, $dateStart, $dateFinish, $loans, $payments);
-        $result = $model->getFine();
+        $errors = \Yii::$app->fine->validate($loanAmount, $dateStart, $dateFinish, $loans, $payments);
+        $result = \Yii::$app->fine->getFine($loanAmount, $dateStart, $dateFinish, $loans, $payments);
 
         return $this->render('index',
             compact('dateStart', 'dateFinish', 'loanAmount', 'loansInit', 'paymentsInit', 'errors', 'result'));
