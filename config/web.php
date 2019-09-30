@@ -43,12 +43,6 @@ $config = [
             ],
         ],
         'db' => $db,
-        'fine' => [
-            'class' => \app\components\FineComponent::class,
-            /*'defaultRateType' => 3,
-            'defaultExactDate' => new \DateTimeImmutable(),
-            'defaultMethod' => 3*/
-        ],
         /*
         'urlManager' => [
             'enablePrettyUrl' => true,
