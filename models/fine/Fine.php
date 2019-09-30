@@ -166,6 +166,7 @@ class Fine extends Model
             $this->splitPayForPayment($loans, $payment, $result);
             $this->splitPaymentByLoanPeriods($loans, $payment, $result);
         }
+
         return $result;
     }
 
@@ -224,14 +225,73 @@ class Fine extends Model
         array $payments
     ): array
     {
+        $rulesData = $this->getRulesData($dateStart);
+
+        $preData = $this->getPreData($dateStart, $rulesData, $payments);
+
+        $resData = [];
+        $startJ = 0;
+        $this->initPaymentsForPeriods($sum, $dateStart, $payments, $startJ, $resData);
+
+        $this->loansPaymentsDistribution($sum, $preData, $payments, $startJ, $resData);
+
+        $this->finishPaymentsForPeriods($sum, $payments, $startJ, $resData);
+
+        return ['dateStart'=> $dateStart, 'dateFinish'=> $this->dateFinish, 'data'=> $resData, 'endSum'=> floatval($sum)];
+    }
+
+    protected function getRulesData(\DateTimeImmutable $dateStart): array
+    {
         $rulesData = [];
         if ($this->method == self::METHOD_300_ALL_TIME && $dateStart < $this->newLaw) {
-            $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $this->dateFinish];
+            $this->rulesForMethod300($dateStart, $rulesData);
         } elseif ($this->method == self::METHOD_NEW_FOR_ALL_TIME && $dateStart < $this->newLaw) {
-            $newDate = $dateStart;
+            $this->rulesForNewMethod($dateStart, $rulesData);
+        } else {
+            $this->rulesForOtherMethod($dateStart, $rulesData);
+        }
+
+        return $rulesData;
+    }
+
+    protected function rulesForMethod300(\DateTimeImmutable $dateStart, array &$rulesData): void
+    {
+        $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $this->dateFinish];
+    }
+
+    protected function rulesForNewMethod(\DateTimeImmutable $dateStart, array &$rulesData): void
+    {
+        $newDate = $dateStart;
+        $days30 = $dateStart->add(new \DateInterval('P29D'));
+        $days90 = $dateStart->add(new \DateInterval('P89D'));
+
+        if ($newDate <= $days30) {
+            $till = $this->dateFinish > $days30 ? $days30 : $this->dateFinish;
+            $rulesData[] = ['rate' => '0', 'dateStart' => $newDate, 'dateFinish' => $till];
+        }
+        if ($newDate <= $days90 && $this->dateFinish > $days30) {
+            $from = $newDate > $days30 ? $newDate : $days30->add(new \DateInterval('P1D'));
+            $till = $this->dateFinish > $days90 ? $days90 : $this->dateFinish;
+            $rulesData[] = ['rate' => '1/300', 'dateStart' => $from, 'dateFinish' => $till];
+        }
+        if ($this->dateFinish > $days90) {
+            $from = $newDate >= $days90 ? $newDate : $days90->add(new \DateInterval('P1D'));
+            $rulesData[] = ['rate' => '1/130', 'dateStart' => $from, 'dateFinish' => $this->dateFinish];
+        }
+    }
+
+    protected function rulesForOtherMethod(\DateTimeImmutable $dateStart, array &$rulesData): void
+    {
+        if ($dateStart < $this->newLaw) {
+            $newDate = $this->dateFinish >= $this->newLaw
+                ? $this->newLaw->sub(new \DateInterval('P1D'))
+                : $this->dateFinish;
+            $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $newDate];
+        }
+        if ($this->dateFinish >= $this->newLaw) {
+            $newDate = $dateStart < $this->newLaw ? $this->newLaw : $dateStart;
             $days30 = $dateStart->add(new \DateInterval('P29D'));
             $days90 = $dateStart->add(new \DateInterval('P89D'));
-
             if ($newDate <= $days30) {
                 $till = $this->dateFinish > $days30 ? $days30 : $this->dateFinish;
                 $rulesData[] = ['rate' => '0', 'dateStart' => $newDate, 'dateFinish' => $till];
@@ -245,114 +305,120 @@ class Fine extends Model
                 $from = $newDate >= $days90 ? $newDate : $days90->add(new \DateInterval('P1D'));
                 $rulesData[] = ['rate' => '1/130', 'dateStart' => $from, 'dateFinish' => $this->dateFinish];
             }
-        } else {
-            if ($dateStart < $this->newLaw) {
-                $newDate = $this->dateFinish >= $this->newLaw
-                    ? $this->newLaw->sub(new \DateInterval('P1D'))
-                    : $this->dateFinish;
-                $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $newDate];
-            }
-            if ($this->dateFinish >= $this->newLaw) {
-                $newDate = $dateStart < $this->newLaw ? $this->newLaw : $dateStart;
-                $days30 = $dateStart->add(new \DateInterval('P29D'));
-                $days90 = $dateStart->add(new \DateInterval('P89D'));
-                if ($newDate <= $days30) {
-                    $till = $this->dateFinish > $days30 ? $days30 : $this->dateFinish;
-                    $rulesData[] = ['rate' => '0', 'dateStart' => $newDate, 'dateFinish' => $till];
-                }
-                if ($newDate <= $days90 && $this->dateFinish > $days30) {
-                    $from = $newDate > $days30 ? $newDate : $days30->add(new \DateInterval('P1D'));
-                    $till = $this->dateFinish > $days90 ? $days90 : $this->dateFinish;
-                    $rulesData[] = ['rate' => '1/300', 'dateStart' => $from, 'dateFinish' => $till];
-                }
-                if ($this->dateFinish > $days90) {
-                    $from = $newDate >= $days90 ? $newDate : $days90->add(new \DateInterval('P1D'));
-                    $rulesData[] = ['rate' => '1/130', 'dateStart' => $from, 'dateFinish' => $this->dateFinish];
-                }
-            }
+        }
+    }
 
+    protected function getPreData(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
+    {
+        switch ($this->rateType) {
+            case self::RATE_TYPE_SINGLE:
+                return $this->getPreDataForRateTypeSingle($dateStart, $rulesData, $payments);
+            case self::RATE_TYPE_PAY:
+                return $this->getPreDataForRateTypePay($dateStart, $rulesData, $payments);
+            case self::RATE_TYPE_TODAY:
+                return $this->getPreDataForRateTypeToday($dateStart, $rulesData, $payments);
+            case self::RATE_TYPE_DATE:
+                return $this->getPreDataForRateTypeDate($dateStart, $rulesData, $payments);
+            default:
+                return $this->pushRules(
+                    $this->datesBase,
+                    $this->percents,
+                    $rulesData,
+                    $dateStart);
+        }
+    }
+
+    protected function getPreDataForRateTypeSingle(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
+    {
+        $dateFinishInd = 0;
+        for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
+            if ($this->dateFinish >= $this->datesBase[$i]) {
+                $dateFinishInd = $i;
+                break;
+            }
         }
 
-        $preData = [];
+        return $this->pushRules(
+            [$dateStart, new \DateTimeImmutable('3000-01-01')],
+            [$this->percents[$dateFinishInd], 0],
+            $rulesData,
+            $dateStart);
+    }
 
-        if ($this->rateType == self::RATE_TYPE_SINGLE) {
-            $dateFinishInd = 0;
-            for ($i = count($this->datesBase) - 1; $i >= 0; $i--)
-                if ($this->dateFinish >= $this->datesBase[$i]) {
-                    $dateFinishInd = $i;
-                    break;
-                }
-            $preData = $this->pushRules(
-                [$dateStart, new \DateTimeImmutable('3000-01-01')],
-                [$this->percents[$dateFinishInd], 0],
-                $rulesData,
-                $dateStart);
-        } elseif ($this->rateType == self::RATE_TYPE_PAY) {
-            $payDates = [$dateStart];
-            $payPercents = [];
-            $curPercents = 0;
-            for ($i = 0; $i < count($payments) && $curPercents < count($this->percents); $i++) {
-                for (; $curPercents < count($this->percents); $curPercents++) {
-                    if ($payments[$i]['date'] < $this->datesBase[$curPercents]) {
-                        $payDates[] = $payments[$i]['datePlus'];
-                        $payPercents[] = $curPercents >= 1 ? $this->percents[$curPercents - 1] : 0;
-                        break;
-                    }
-                }
-            }
-            for ($i = count($this->datesBase) - 1; $i >= 0; $i--)
-                if ($this->dateFinish >= $this->datesBase[$i]) {
-                    $payPercents[] = $this->percents[$i];
-                    break;
-                }
-            $payDates[] = new \DateTimeImmutable('3000-01-01');
-            $payPercents[] = 0;
-
-            $preData = $this->pushRules(
-                $payDates,
-                $payPercents,
-                $rulesData,
-                $dateStart);
-        } elseif ($this->rateType == self::RATE_TYPE_TODAY) {
-            $today = new \DateTimeImmutable('today');
-            $dateFinishInd = 0;
-            for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
-                if ($today >= $this->datesBase[$i]) {
-                    $dateFinishInd = $i;
+    protected function getPreDataForRateTypePay(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
+    {
+        $payDates = [$dateStart];
+        $payPercents = [];
+        $curPercents = 0;
+        for ($i = 0; $i < count($payments) && $curPercents < count($this->percents); $i++) {
+            for (; $curPercents < count($this->percents); $curPercents++) {
+                if ($payments[$i]['date'] < $this->datesBase[$curPercents]) {
+                    $payDates[] = $payments[$i]['datePlus'];
+                    $payPercents[] = $curPercents >= 1 ? $this->percents[$curPercents - 1] : 0;
                     break;
                 }
             }
-
-            $preData = $this->pushRules(
-                [$dateStart, new \DateTimeImmutable('3000-01-01')],
-                [$this->percents[$dateFinishInd], 0],
-                $rulesData,
-                $dateStart);
-        } elseif ($this->rateType == self::RATE_TYPE_DATE) {
-            $date = $this->exactDate;
-            $dateFinishInd = 0;
-            for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
-                if ($date >= $this->datesBase[$i]) {
-                    $dateFinishInd = $i;
-                    break;
-                }
+        }
+        for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
+            if ($this->dateFinish >= $this->datesBase[$i]) {
+                $payPercents[] = $this->percents[$i];
+                break;
             }
-            $preData = $this->pushRules(
-                [$dateStart, new \DateTimeImmutable('3000-01-01')],
-                [$this->percents[$dateFinishInd], 0],
-                $rulesData,
-                $dateStart);
-        } else {
-            $preData = $this->pushRules(
-                $this->datesBase,
-                $this->percents,
-                $rulesData,
-                $dateStart);
         }
 
-        $resData = [];
-        $startJ = 0;
+        $payDates[] = new \DateTimeImmutable('3000-01-01');
+        $payPercents[] = 0;
 
+        return $this->pushRules(
+            $payDates,
+            $payPercents,
+            $rulesData,
+            $dateStart);
+    }
+
+    protected function getPreDataForRateTypeToday(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
+    {
+        $today = new \DateTimeImmutable('today');
+        $dateFinishInd = 0;
+        for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
+            if ($today >= $this->datesBase[$i]) {
+                $dateFinishInd = $i;
+                break;
+            }
+        }
+
+        return $this->pushRules(
+            [$dateStart, new \DateTimeImmutable('3000-01-01')],
+            [$this->percents[$dateFinishInd], 0],
+            $rulesData,
+            $dateStart);
+    }
+
+    protected function getPreDataForRateTypeDate(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
+    {
+        $date = $this->exactDate;
+        $dateFinishInd = 0;
+        for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
+            if ($date >= $this->datesBase[$i]) {
+                $dateFinishInd = $i;
+                break;
+            }
+        }
+        return $this->pushRules(
+            [$dateStart, new \DateTimeImmutable('3000-01-01')],
+            [$this->percents[$dateFinishInd], 0],
+            $rulesData,
+            $dateStart);
+    }
+
+    protected function initPaymentsForPeriods(
+        float &$sum,
+        \DateTimeImmutable $dateStart,
+        array &$payments,
+        int &$startJ,
+        array &$resData
+    ): void
+    {
         for ($j = $startJ; $j < count($payments); $j++, $startJ++) {
             if ($dateStart <= $payments[$j]['datePlus']) {// убрал, потому что если платёж 12.02.2015, а просрочка с 16.02.2015, то расчёт ведётся только с 01.01.2016
                 break;
@@ -371,8 +437,16 @@ class Fine extends Model
                 'data'=> ['sum'=> $toCut, 'date'=> $payments[$j]['date']]
             ];
         }
+    }
 
-
+    protected function loansPaymentsDistribution(
+        float &$sum,
+        array $preData,
+        array &$payments,
+        int &$startJ,
+        array &$resData
+    ): void
+    {
         for ($i = 0; $i < count($preData); $i++) {
             $data = $preData[$i];
             $lastStartJ = $startJ;
@@ -437,7 +511,15 @@ class Fine extends Model
                 ];
             }
         }
+    }
 
+    protected function finishPaymentsForPeriods(
+        float &$sum,
+        array &$payments,
+        int $startJ,
+        array &$resData
+    ): void
+    {
         for ($j = $startJ; $j < count($payments); $j++) {
             $payment = $payments[$j];
             if ($payment['sum'] <= $sum) {
@@ -453,11 +535,10 @@ class Fine extends Model
                 'data'=> ['sum'=> $toCut, 'date'=> $payment['date'], 'order'=> $payment['order']]
             ];
         }
-
-        return ['dateStart'=> $dateStart, 'dateFinish'=> $this->dateFinish, 'data'=> $resData, 'endSum'=> floatval($sum)];
     }
 
-    private function pushRules(
+
+    protected function pushRules(
         array $dates,
         array $percents,
         array $rules,
@@ -524,7 +605,7 @@ class Fine extends Model
         return $res;
     }
 
-    private function processData(
+    protected function processData(
         float $sum,
         array $data,
         \DateTimeImmutable $dateStart,
@@ -543,7 +624,7 @@ class Fine extends Model
         ];
     }
 
-    private function getRate(string $part): float
+    protected function getRate(string $part): float
     {
         if ($part == '1/300') {
             return 1/300;
@@ -554,11 +635,10 @@ class Fine extends Model
         return 0;
     }
 
-    private function countCost(float $money, int $days, float $percent, float $ratePart): float
+    protected function countCost(float $money, int $days, float $percent, float $ratePart): float
     {
         $res = $money * $days * $percent * $ratePart / 100;
         return round($res, 2);
     }
-
 
 }
