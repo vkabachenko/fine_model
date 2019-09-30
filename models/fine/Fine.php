@@ -28,30 +28,55 @@ class Fine extends Model
     /* Входные параметры модели */
 
     /* @var int */
+    /* Способ применения процентной ставки
+     * 2 по периодам действия ставки рефинансирования,
+     * 1 на конец периода,
+     * 3 на день частичной оплаты,
+     * 4 на день подачи иска в суд (сегодня)
+     * 5 на указанную дату ($exactDate должна быть определена)
+     */
     public $rateType = self::RATE_TYPE_PERIOD;
 
     /* @var \DateTimeImmutable|null */
+    /* Дата применения процентной ставки (при $rateType=5)*/
     public $exactDate = null;
 
     /* @var int */
+    /* Способ расчета пени
+     * 1 Применять 1/300 на весь период к задолженностям, возникшим ранее 01.01.2016
+     * 2 Применять 1/300 только до 01.01.2016 и редакцию от 01.01.2016 после
+     * 3 Применять редакцию от 01.01.2016 с первых дней задолженности
+     */
     public $method = self::METHOD_300_ALL_TIME;
 
     /* @var float */
+    /* начальная сумма задолженности */
     public $loanAmount;
 
     /* @var \DateTimeImmutable */
+    /* дата начала просрочки */
     public $dateStart;
 
     /* @var \DateTimeImmutable */
+    /* Конечная дата */
     public $dateFinish;
 
     /* @var array */
+    /* Задолженности по датам.
+     * Структура элемента массива:
+     * [ 'date' => \DateTimeImmutable, 'sum' => float]
+     */
     public $loans = [];
 
     /* @var array */
+    /* Оплаты по датам.
+     * Структура элемента массива:
+     * [ 'date' => \DateTimeImmutable, 'sum' => float, 'payFor' => \DateTimeImmutable]
+     */
     public $payments = [];
 
     /* @var \DateTimeImmutable */
+    /* Дата новой рредакции способа расчета пени - 01.01.2016*/
     protected $newLaw;
 
     public function __construct($config = [])
@@ -61,6 +86,9 @@ class Fine extends Model
         parent::__construct($config);
     }
 
+    /**
+     * @return array
+     */
     public function rules()
     {
         return [
@@ -73,6 +101,11 @@ class Fine extends Model
         ];
     }
 
+    /**
+     * @param $attribute
+     * @param $params
+     * @param $validator
+     */
     public function validateDateType($attribute, $params, $validator)
     {
         if (!($this->$attribute instanceof \DateTimeImmutable)) {
@@ -81,6 +114,11 @@ class Fine extends Model
     }
 
 
+    /**
+     * @param $attribute
+     * @param $params
+     * @param $validator
+     */
     public function validateDateStart($attribute, $params, $validator)
     {
         if ($this->dateStart >= end($this->datesBase)) {
@@ -91,6 +129,11 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param $attribute
+     * @param $params
+     * @param $validator
+     */
     public function validateDateFinish($attribute, $params, $validator)
     {
         if ($this->dateFinish >= end($this->datesBase)) {
@@ -98,6 +141,11 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param $attribute
+     * @param $params
+     * @param $validator
+     */
     public function validateLoans($attribute, $params, $validator)
     {
         $loans = $this->loans;
@@ -115,6 +163,23 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @return array
+     * Структура массива
+     * 'dateStart' => \DateTimeImmutable  дата возникновения задолженности
+     * 'dateFinish' => \DateTimeImmutable конечная дата расчета
+     * 'endSum' => float конечная задолженность
+     * 'data' => array Структура элементов массива
+     *  'type' => int Тип записи: инфо о задолженности (1) или оплата (2)
+     *  'data' => array
+     *      'dateStart' => \DateTimeImmutable начало периода (type = 1) | дата оплаты (type = 2)
+     *      'dateFinish' => \DateTimeImmutable конец  периода (type = 1) | not set (type = 2)
+     *      'days' => int продолжит периода (type = 1) | not set (type = 2)
+     *      'percent' => float процентная ставка (type = 1) | not set (type = 2)
+     *      'cost' => float  сумма пени (type = 1) | not set (type = 2)
+     *      'rate' => string ставка пени (type = 1) | not set (type = 2)
+     *      'sum' => float  сумма задолженности (type = 1) | сумма оплаты (type = 2)
+     */
     public function getFine(): array
     {
         $loans = $this->collectLoans();
@@ -134,12 +199,21 @@ class Fine extends Model
         return $periods;
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param \DateTimeImmutable $dateFinish
+     * @return int
+     */
     protected function daysDiff(\DateTimeImmutable $dateStart, \DateTimeImmutable $dateFinish): int
     {
         $interval = $dateStart->diff($dateFinish);
         return $interval->days + 1;
     }
 
+    /**
+     * @return array
+     * @throws \Exception
+     */
     protected function collectLoans(): array
     {
         $loans = $this->loans;
@@ -149,6 +223,10 @@ class Fine extends Model
         return $loans;
     }
 
+    /**
+     * @return array
+     * @throws \Exception
+     */
     protected function collectPayments(): array
     {
         $payments = $this->payments;
@@ -158,6 +236,11 @@ class Fine extends Model
         return $payments;
     }
 
+    /**
+     * @param array $payments
+     * @param array $loans
+     * @return array
+     */
     protected function splitPayments(array $payments, array $loans): array
     {
         $result = $this->initResultAndLoans($loans);
@@ -170,6 +253,10 @@ class Fine extends Model
         return $result;
     }
 
+    /**
+     * @param array $loans
+     * @return array
+     */
     protected function initResultAndLoans(array &$loans): array
     {
         $result = [];
@@ -180,6 +267,11 @@ class Fine extends Model
         return $result;
     }
 
+    /**
+     * @param array $loans
+     * @param array $payment
+     * @param array $result
+     */
     protected function splitPayForPayment(array $loans, array &$payment, array &$result): void
     {
         if ($payment['payFor']) {
@@ -201,6 +293,11 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param array $loans
+     * @param array $payment
+     * @param array $result
+     */
     protected function splitPaymentByLoanPeriods(array &$loans, array &$payment, array &$result)
     {
         for ($j = 0; $j < count($loans) && $payment['sum'] > 0; $j++) {
@@ -219,6 +316,12 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param float $sum
+     * @param \DateTimeImmutable $dateStart
+     * @param array $payments
+     * @return array
+     */
     protected function countForPeriod(
         float $sum,
         \DateTimeImmutable $dateStart,
@@ -240,6 +343,10 @@ class Fine extends Model
         return ['dateStart'=> $dateStart, 'dateFinish'=> $this->dateFinish, 'data'=> $resData, 'endSum'=> floatval($sum)];
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @return array
+     */
     protected function getRulesData(\DateTimeImmutable $dateStart): array
     {
         $rulesData = [];
@@ -254,11 +361,20 @@ class Fine extends Model
         return $rulesData;
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     */
     protected function rulesForMethod300(\DateTimeImmutable $dateStart, array &$rulesData): void
     {
         $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $this->dateFinish];
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     * @throws \Exception
+     */
     protected function rulesForNewMethod(\DateTimeImmutable $dateStart, array &$rulesData): void
     {
         $newDate = $dateStart;
@@ -280,6 +396,11 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     * @throws \Exception
+     */
     protected function rulesForOtherMethod(\DateTimeImmutable $dateStart, array &$rulesData): void
     {
         if ($dateStart < $this->newLaw) {
@@ -308,6 +429,12 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     * @param array $payments
+     * @return array
+     */
     protected function getPreData(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
     {
         switch ($this->rateType) {
@@ -328,6 +455,13 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     * @param array $payments
+     * @return array
+     * @throws \Exception
+     */
     protected function getPreDataForRateTypeSingle(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
     {
         $dateFinishInd = 0;
@@ -345,6 +479,13 @@ class Fine extends Model
             $dateStart);
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     * @param array $payments
+     * @return array
+     * @throws \Exception
+     */
     protected function getPreDataForRateTypePay(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
     {
         $payDates = [$dateStart];
@@ -376,6 +517,13 @@ class Fine extends Model
             $dateStart);
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     * @param array $payments
+     * @return array
+     * @throws \Exception
+     */
     protected function getPreDataForRateTypeToday(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
     {
         $today = new \DateTimeImmutable('today');
@@ -394,6 +542,13 @@ class Fine extends Model
             $dateStart);
     }
 
+    /**
+     * @param \DateTimeImmutable $dateStart
+     * @param array $rulesData
+     * @param array $payments
+     * @return array
+     * @throws \Exception
+     */
     protected function getPreDataForRateTypeDate(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
     {
         $date = $this->exactDate;
@@ -411,6 +566,13 @@ class Fine extends Model
             $dateStart);
     }
 
+    /**
+     * @param float $sum
+     * @param \DateTimeImmutable $dateStart
+     * @param array $payments
+     * @param int $startJ
+     * @param array $resData
+     */
     protected function initPaymentsForPeriods(
         float &$sum,
         \DateTimeImmutable $dateStart,
@@ -439,6 +601,13 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param float $sum
+     * @param array $preData
+     * @param array $payments
+     * @param int $startJ
+     * @param array $resData
+     */
     protected function loansPaymentsDistribution(
         float &$sum,
         array $preData,
@@ -513,6 +682,12 @@ class Fine extends Model
         }
     }
 
+    /**
+     * @param float $sum
+     * @param array $payments
+     * @param int $startJ
+     * @param array $resData
+     */
     protected function finishPaymentsForPeriods(
         float &$sum,
         array &$payments,
@@ -538,6 +713,15 @@ class Fine extends Model
     }
 
 
+    /**
+     * @param array $dates
+     * @param array $percents
+     * @param array $rules
+     * @param \DateTimeImmutable $dateStartUser
+     * @param \DateTimeImmutable|null $dateFinishUser
+     * @return array
+     * @throws \Exception
+     */
     protected function pushRules(
         array $dates,
         array $percents,
@@ -605,6 +789,13 @@ class Fine extends Model
         return $res;
     }
 
+    /**
+     * @param float $sum
+     * @param array $data
+     * @param \DateTimeImmutable $dateStart
+     * @param \DateTimeImmutable $dateFinish
+     * @return array
+     */
     protected function processData(
         float $sum,
         array $data,
@@ -624,6 +815,10 @@ class Fine extends Model
         ];
     }
 
+    /**
+     * @param string $part
+     * @return float
+     */
     protected function getRate(string $part): float
     {
         if ($part == '1/300') {
@@ -635,6 +830,13 @@ class Fine extends Model
         return 0;
     }
 
+    /**
+     * @param float $money
+     * @param int $days
+     * @param float $percent
+     * @param float $ratePart
+     * @return float
+     */
     protected function countCost(float $money, int $days, float $percent, float $ratePart): float
     {
         $res = $money * $days * $percent * $ratePart / 100;
