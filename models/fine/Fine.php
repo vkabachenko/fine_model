@@ -5,8 +5,6 @@ namespace app\models\fine;
 
 
 use yii\base\Model;
-use app\models\fine\VacationTrait;
-use app\models\fine\PercentsTrait;
 
 class Fine extends Model
 {
@@ -179,6 +177,8 @@ class Fine extends Model
      *      'cost' => float  сумма пени (type = 1) | not set (type = 2)
      *      'rate' => string ставка пени (type = 1) | not set (type = 2)
      *      'sum' => float  сумма задолженности (type = 1) | сумма оплаты (type = 2)
+     *
+     *  @throws \Exception
      */
     public function getFine(): array
     {
@@ -315,6 +315,7 @@ class Fine extends Model
      * @param \DateTimeImmutable $dateStart
      * @param array $payments
      * @return array
+     * @throws \Exception
      */
     protected function countForPeriod(
         float $sum,
@@ -340,6 +341,7 @@ class Fine extends Model
     /**
      * @param \DateTimeImmutable $dateStart
      * @return array
+     * @throws \Exception
      */
     protected function getRulesData(\DateTimeImmutable $dateStart): array
     {
@@ -507,7 +509,6 @@ class Fine extends Model
      */
     protected function getPreDataForRateTypeDate(\DateTimeImmutable $date, \DateTimeImmutable $dateStart, array $rulesData): array
     {
-        $date = $this->exactDate;
         $dateFinishInd = 0;
         for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
             if ($date >= $this->datesBase[$i]) {
