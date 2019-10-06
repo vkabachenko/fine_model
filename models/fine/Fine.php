@@ -278,17 +278,7 @@ class Fine extends Model
             $curMonth = 12 * intval($payment['payFor']->format('Y')) + intval($payment['payFor']->format('m')) + 1;
             $index = array_search($curMonth, array_column($loans, 'month'));
             if ($index !== false) {
-                $toCut = min($payment['sum'], $loans[$index]['sum']);
-                if ($toCut >= 0.01) {
-                    $loans[$index]['sum'] -= $toCut;
-                    $payment['sum'] -= $toCut;
-                    $result[$index][] = [
-                        'date'=> $payment['date'],
-                        'datePlus'=> $payment['datePlus'],
-                        'sum' => $toCut,
-                        'payFor'=> $payment['payFor']
-                    ];
-                }
+                $this->createSplitPayment($index, $loans, $payment, $result);
             }
         }
     }
@@ -298,21 +288,25 @@ class Fine extends Model
      * @param array $payment
      * @param array $result
      */
-    protected function splitPaymentByLoanPeriods(array &$loans, array &$payment, array &$result)
+    protected function splitPaymentByLoanPeriods(array &$loans, array &$payment, array &$result): void
     {
         for ($j = 0; $j < count($loans) && $payment['sum'] > 0; $j++) {
-            $toCut = min($payment['sum'], $loans[$j]['sum']);
+            $this->createSplitPayment($j, $loans, $payment, $result);
+        }
+    }
 
-            if ($toCut >= 0.01) {
-                $loans[$j]['sum'] -= $toCut;
-                $payment['sum'] -= $toCut;
-                $result[$j][] = [
-                    'date'=> $payment['date'],
-                    'datePlus'=> $payment['datePlus'],
-                    'sum' => $toCut,
-                    'payFor'=> $payment['payFor']
-                ];
-            }
+    protected function createSplitPayment(int $index, array &$loans, array &$payment, array &$result)
+    {
+        $toCut = min($payment['sum'], $loans[$index]['sum']);
+        if ($toCut >= 0.01) {
+            $loans[$index]['sum'] -= $toCut;
+            $payment['sum'] -= $toCut;
+            $result[$index][] = [
+                'date'=> $payment['date'],
+                'datePlus'=> $payment['datePlus'],
+                'sum' => $toCut,
+                'payFor'=> $payment['payFor']
+            ];
         }
     }
 
@@ -412,8 +406,6 @@ class Fine extends Model
         if ($this->dateFinish >= $this->newLaw) {
             $this->rulesForNewMethod($dateStart, $rulesData);
         }
-
-
     }
 
     /**
