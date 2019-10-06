@@ -423,9 +423,10 @@ class Fine extends Model
             case self::RATE_TYPE_PAY:
                 return $this->getPreDataForRateTypePay($dateStart, $rulesData, $payments);
             case self::RATE_TYPE_TODAY:
-                return $this->getPreDataForRateTypeToday($dateStart, $rulesData, $payments);
+                $today = new \DateTimeImmutable('today');
+                return $this->getPreDataForRateTypeDate($today, $dateStart, $rulesData);
             case self::RATE_TYPE_DATE:
-                return $this->getPreDataForRateTypeDate($dateStart, $rulesData, $payments);
+                return $this->getPreDataForRateTypeDate($this->exactDate, $dateStart, $rulesData);
             default:
                 return $this->pushRules(
                     $this->datesBase,
@@ -504,32 +505,7 @@ class Fine extends Model
      * @return array
      * @throws \Exception
      */
-    protected function getPreDataForRateTypeToday(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
-    {
-        $today = new \DateTimeImmutable('today');
-        $dateFinishInd = 0;
-        for ($i = count($this->datesBase) - 1; $i >= 0; $i--) {
-            if ($today >= $this->datesBase[$i]) {
-                $dateFinishInd = $i;
-                break;
-            }
-        }
-
-        return $this->pushRules(
-            [$dateStart, new \DateTimeImmutable('3000-01-01')],
-            [$this->percents[$dateFinishInd], 0],
-            $rulesData,
-            $dateStart);
-    }
-
-    /**
-     * @param \DateTimeImmutable $dateStart
-     * @param array $rulesData
-     * @param array $payments
-     * @return array
-     * @throws \Exception
-     */
-    protected function getPreDataForRateTypeDate(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
+    protected function getPreDataForRateTypeDate(\DateTimeImmutable $date, \DateTimeImmutable $dateStart, array $rulesData): array
     {
         $date = $this->exactDate;
         $dateFinishInd = 0;
