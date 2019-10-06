@@ -410,23 +410,10 @@ class Fine extends Model
             $rulesData[] = ['rate' => '1/300', 'dateStart' => $dateStart, 'dateFinish' => $newDate];
         }
         if ($this->dateFinish >= $this->newLaw) {
-            $newDate = $dateStart < $this->newLaw ? $this->newLaw : $dateStart;
-            $days30 = $dateStart->add(new \DateInterval('P29D'));
-            $days90 = $dateStart->add(new \DateInterval('P89D'));
-            if ($newDate <= $days30) {
-                $till = $this->dateFinish > $days30 ? $days30 : $this->dateFinish;
-                $rulesData[] = ['rate' => '0', 'dateStart' => $newDate, 'dateFinish' => $till];
-            }
-            if ($newDate <= $days90 && $this->dateFinish > $days30) {
-                $from = $newDate > $days30 ? $newDate : $days30->add(new \DateInterval('P1D'));
-                $till = $this->dateFinish > $days90 ? $days90 : $this->dateFinish;
-                $rulesData[] = ['rate' => '1/300', 'dateStart' => $from, 'dateFinish' => $till];
-            }
-            if ($this->dateFinish > $days90) {
-                $from = $newDate >= $days90 ? $newDate : $days90->add(new \DateInterval('P1D'));
-                $rulesData[] = ['rate' => '1/130', 'dateStart' => $from, 'dateFinish' => $this->dateFinish];
-            }
+            $this->rulesForNewMethod($dateStart, $rulesData);
         }
+
+
     }
 
     /**
@@ -434,6 +421,7 @@ class Fine extends Model
      * @param array $rulesData
      * @param array $payments
      * @return array
+     * @throws \Exception
      */
     protected function getPreData(\DateTimeImmutable $dateStart, array $rulesData, array $payments): array
     {
