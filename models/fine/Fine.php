@@ -664,7 +664,7 @@ class Fine extends Model
                 $sum = 0;
             }
             $resData[] = ['type'=> self::DATA_TYPE_PAYED,
-                'data'=> ['sum'=> $toCut, 'date'=> $payment['date'], 'order'=> $payment['order']]
+                'data'=> ['sum'=> $toCut, 'date'=> $payment['date']]
             ];
         }
     }
