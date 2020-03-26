@@ -272,7 +272,7 @@ class Fine extends Model
      * @param array $payment
      * @param array $result
      */
-    protected function splitPayForPayment(array $loans, array &$payment, array &$result): void
+    protected function splitPayForPayment(array &$loans, array &$payment, array &$result): void
     {
         if ($payment['payFor']) {
             $curMonth = 12 * intval($payment['payFor']->format('Y')) + intval($payment['payFor']->format('m')) + 1;
